@@ -1,0 +1,8 @@
+name: RideablePanda
+version: '1.0'
+main: org.throwable_Anvil.Throwable_Anvil.rideablePanda.RideablePanda
+api-version: '1.21'
+prefix: AnvilThrow
+authors: [ NOSgaming3125 ]
+description: Ever wanted to throw and anvil at someone? Now you can!
+website: www.nosgaming.fun
