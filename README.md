@@ -123,8 +123,8 @@ If you encounter any issues or have suggestions, please report them!
 
 ## Credits
 
-**Author:** Throwable_Anvil  
-**Version:** 2.0  
+**Author:** NOSgaming3125
+**Version:** 1.2
 **API:** Spigot/Bukkit 1.20+
 
 ---
