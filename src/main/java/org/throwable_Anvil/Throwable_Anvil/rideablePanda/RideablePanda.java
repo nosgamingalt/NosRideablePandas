@@ -1,17 +1,29 @@
 package org.throwable_Anvil.Throwable_Anvil.rideablePanda;
 
+import org.bukkit.ChatColor;
+import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Panda;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDismountEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.metadata.FixedMetadataValue;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
-import org.bukkit.metadata.FixedMetadataValue;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -22,6 +34,28 @@ public class RideablePanda extends JavaPlugin {
     private MovementController movementController;
     private final Map<UUID, Integer> tamingAttempts = new HashMap<>();
     private final Map<UUID, BukkitRunnable> activeRiders = new HashMap<>();
+    private final Map<UUID, Boolean> controlEnabled = new HashMap<>();
+    private final Map<UUID, Boolean> flightEnabled = new HashMap<>();
+    private final Map<UUID, int[]> controlSlots = new HashMap<>();
+    private NamespacedKey tamedByKey;
+
+    // Custom control items
+    private ItemStack createControlItem(Material mat, String name, String lore) {
+        ItemStack item = new ItemStack(mat, 1);
+        ItemMeta meta = item.getItemMeta();
+        meta.setDisplayName(ChatColor.AQUA + name);
+        meta.setLore(java.util.Arrays.asList(ChatColor.GRAY + lore));
+        meta.setUnbreakable(true);
+        meta.setCustomModelData(987654321); // mark as plugin item
+        item.setItemMeta(meta);
+        return item;
+    }
+    private ItemStack getControlToggleItem() {
+        return createControlItem(Material.DIAMOND, "Panda Control", "Toggle manual control");
+    }
+    private ItemStack getFlightToggleItem() {
+        return createControlItem(Material.EMERALD, "Panda Flight", "Toggle flight while riding");
+    }
 
     @Override
     public void onEnable() {
@@ -31,6 +65,7 @@ public class RideablePanda extends JavaPlugin {
         // Initialize messages and movement controller
         messages = new Messages(getConfig());
         movementController = new MovementController();
+        tamedByKey = new NamespacedKey(this, "tamed_by");
         
         // Register events
         getServer().getPluginManager().registerEvents(new PandaListener(this), this);
@@ -62,7 +97,52 @@ public class RideablePanda extends JavaPlugin {
         }
 
         @EventHandler
+        public void onPandaDamage(EntityDamageEvent event) {
+            if (!(event.getEntity() instanceof Panda)) return;
+            Panda panda = (Panda) event.getEntity();
+            
+            // Cancel fall damage if panda has a rider
+            if (!panda.getPassengers().isEmpty() && event.getCause() == EntityDamageEvent.DamageCause.FALL) {
+                event.setCancelled(true);
+            }
+        }
+
+        @EventHandler
+        public void onInventoryClick(org.bukkit.event.inventory.InventoryClickEvent event) {
+            if (!(event.getWhoClicked() instanceof Player)) return;
+            ItemStack clicked = event.getCurrentItem();
+            if (clicked != null && clicked.hasItemMeta() && clicked.getItemMeta().hasCustomModelData() && clicked.getItemMeta().getCustomModelData() == 987654321) {
+                event.setCancelled(true);
+            }
+        }
+
+        @EventHandler
+        public void onControlToggle(PlayerInteractEvent event) {
+            Player player = event.getPlayer();
+            ItemStack item = event.getItem();
+            if (item == null || !item.hasItemMeta() || !item.getItemMeta().hasCustomModelData() || item.getItemMeta().getCustomModelData() != 987654321) return;
+
+            String name = ChatColor.stripColor(item.getItemMeta().getDisplayName());
+            if ("Panda Control".equalsIgnoreCase(name)) {
+                boolean newState = !controlEnabled.getOrDefault(player.getUniqueId(), false);
+                controlEnabled.put(player.getUniqueId(), newState);
+                player.sendMessage(newState ? ChatColor.GREEN + "Manual control enabled" : ChatColor.YELLOW + "AI mode enabled");
+                event.setCancelled(true);
+            } else if ("Panda Flight".equalsIgnoreCase(name)) {
+                boolean newState = !flightEnabled.getOrDefault(player.getUniqueId(), false);
+                flightEnabled.put(player.getUniqueId(), newState);
+                player.sendMessage(newState ? ChatColor.GREEN + "Flight enabled" : ChatColor.YELLOW + "Flight disabled");
+                event.setCancelled(true);
+            }
+        }
+
+        @EventHandler
         public void onRightClickPanda(PlayerInteractEntityEvent event) {
+            // Process only main hand to prevent duplicate firing
+            try {
+                if (event.getHand() != org.bukkit.inventory.EquipmentSlot.HAND) return;
+            } catch (NoSuchMethodError ignored) {}
+            
             if (!(event.getRightClicked() instanceof Panda)) return;
             Panda panda = (Panda) event.getRightClicked();
             Player player = event.getPlayer();
@@ -82,13 +162,7 @@ public class RideablePanda extends JavaPlugin {
             ItemStack handItem = player.getInventory().getItemInMainHand();
             Material foodItem = Material.valueOf(getConfig().getString("taming.food-item", "BAMBOO"));
 
-            // Admin instant mount
-            if (player.hasPermission("rideablepanda.instant")) {
-                handleMount(player, panda, event);
-                return;
-            }
-
-            // Taming system
+            // Taming system (all players must tame, including ops)
             if (getConfig().getBoolean("taming.enabled", true)) {
                 // Check if holding correct food
                 if (handItem.getType() != foodItem) {
@@ -110,7 +184,9 @@ public class RideablePanda extends JavaPlugin {
 
                 // Taming attempt
                 event.setCancelled(true);
-                handItem.setAmount(handItem.getAmount() - 1);
+                if (handItem.getAmount() > 0) {
+                    handItem.setAmount(handItem.getAmount() - 1);
+                }
 
                 UUID pandaId = panda.getUniqueId();
                 int attempts = tamingAttempts.getOrDefault(pandaId, 0) + 1;
@@ -126,8 +202,8 @@ public class RideablePanda extends JavaPlugin {
                 }
 
                 if (Math.random() * 100 < successChance) {
-                    // Success!
-                    panda.setMetadata("tamed_by", new FixedMetadataValue(plugin, player.getUniqueId().toString()));
+                    // Success! Use PersistentDataContainer for persistent taming
+                    panda.getPersistentDataContainer().set(tamedByKey, PersistentDataType.STRING, player.getUniqueId().toString());
                     tamingAttempts.remove(pandaId);
                     player.sendMessage(messages.get("tamed-success"));
                     handleMount(player, panda, event);
@@ -147,9 +223,12 @@ public class RideablePanda extends JavaPlugin {
         }
 
         private boolean isPandaTamedBy(Panda panda, Player player) {
-            if (!panda.hasMetadata("tamed_by")) return false;
-            String tamedBy = panda.getMetadata("tamed_by").get(0).asString();
-            return tamedBy.equals(player.getUniqueId().toString());
+            // Use PersistentDataContainer for persistent storage
+            if (panda.getPersistentDataContainer().has(tamedByKey, PersistentDataType.STRING)) {
+                String tamedBy = panda.getPersistentDataContainer().get(tamedByKey, PersistentDataType.STRING);
+                return tamedBy != null && tamedBy.equals(player.getUniqueId().toString());
+            }
+            return false;
         }
 
         private void handleMount(Player player, Panda panda, PlayerInteractEntityEvent event) {
@@ -165,8 +244,32 @@ public class RideablePanda extends JavaPlugin {
             }
 
             event.setCancelled(true);
+            // Place control items with a gap: diamond at slot 3 (shown as 4), emerald at slot 5 (shown as 6)
+            PlayerInventory inv = player.getInventory();
+            int slotDiamond = 3; // visual 4
+            int slotEmerald = 5; // visual 6
+
+            // Check if slots are free (null or AIR only)
+            ItemStack existingDiamond = inv.getItem(slotDiamond);
+            ItemStack existingEmerald = inv.getItem(slotEmerald);
+            boolean diamondFree = (existingDiamond == null || existingDiamond.getType() == Material.AIR);
+            boolean emeraldFree = (existingEmerald == null || existingEmerald.getType() == Material.AIR);
+            
+            if (!diamondFree || !emeraldFree) {
+                player.sendMessage(ChatColor.RED + "Please clear hotbar slots 4 and 6 to mount the panda.");
+                return;
+            }
+
+            // Give control items and track slots
+            ItemStack controlItem = getControlToggleItem();
+            ItemStack flightItem = getFlightToggleItem();
+            inv.setItem(slotDiamond, controlItem);
+            inv.setItem(slotEmerald, flightItem);
+            controlSlots.put(player.getUniqueId(), new int[]{slotDiamond, slotEmerald});
+            controlEnabled.put(player.getUniqueId(), false); // Start with AI mode on
+            flightEnabled.put(player.getUniqueId(), false); // Start with flight disabled
+
             panda.addPassenger(player);
-            player.sendMessage(messages.get("mount-success"));
 
             startControlTask(player, panda);
         }
@@ -175,6 +278,7 @@ public class RideablePanda extends JavaPlugin {
         public void onDismount(EntityDismountEvent event) {
             if (event.getEntity() instanceof Player && event.getDismounted() instanceof Panda) {
                 Player player = (Player) event.getEntity();
+                Panda panda = (Panda) event.getDismounted();
                 UUID playerId = player.getUniqueId();
                 
                 BukkitRunnable task = activeRiders.remove(playerId);
@@ -183,7 +287,23 @@ public class RideablePanda extends JavaPlugin {
                 }
                 
                 movementController.cleanup(playerId);
-                player.sendMessage(messages.get("dismount"));
+                // Remove control items and states
+                int[] slots = controlSlots.remove(playerId);
+                if (slots != null) {
+                    for (int s : slots) {
+                        ItemStack it = player.getInventory().getItem(s);
+                        if (it != null && it.hasItemMeta() && it.getItemMeta().hasCustomModelData() && it.getItemMeta().getCustomModelData() == 987654321) {
+                            player.getInventory().setItem(s, null);
+                        }
+                    }
+                }
+                controlEnabled.remove(playerId);
+                flightEnabled.remove(playerId);
+                
+                // Remove potion effects from panda and player
+                panda.removePotionEffect(PotionEffectType.LEVITATION);
+                panda.removePotionEffect(PotionEffectType.SLOW_FALLING);
+                player.removePotionEffect(PotionEffectType.SLOW_FALLING);
             }
         }
 
@@ -218,9 +338,62 @@ public class RideablePanda extends JavaPlugin {
                         return;
                     }
 
-                    // Handle movement using the controller
-                    movementController.handleMovement(player, panda, speed, jumpPower, 
-                                                     allowFlying, flyingSpeed);
+                    // Determine manual/flight state
+                    Location pl = player.getLocation();
+                    boolean manual = controlEnabled.getOrDefault(player.getUniqueId(), false);
+                    // Flight enabled if: player toggled emerald AND has permission
+                    boolean flightToggled = flightEnabled.getOrDefault(player.getUniqueId(), false);
+                    boolean flight = flightToggled && player.hasPermission("rideablepanda.fly");
+
+                    if (!manual) {
+                        player.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, 10, 0, true, false, false));
+                        return;
+                    }
+
+                    // Sync panda rotation to player view (only when manual control is enabled)
+                    panda.setRotation(pl.getYaw(), pl.getPitch());
+
+                    // Step-up detection for 1-block obstacles ahead (only when not flying)
+                    if (!flight) {
+                        Vector dir = pl.getDirection().clone().setY(0).normalize();
+                        Location ahead = panda.getLocation().add(dir.multiply(0.8));
+                        Block aheadBlock = ahead.getBlock();
+                        Block aboveAhead = aheadBlock.getRelative(BlockFace.UP);
+                        boolean obstacle = aheadBlock.getType().isSolid();
+                        boolean canStepUp = !aboveAhead.getType().isSolid();
+
+                        if (obstacle && canStepUp && panda.isOnGround()) {
+                            Vector v = panda.getVelocity();
+                            v.setY(Math.max(v.getY(), jumpPower));
+                            panda.setVelocity(v);
+                        }
+                    }
+
+                    // Handle movement using the controller (flight depends on item toggle)
+                    movementController.handleMovement(player, panda, speed, jumpPower, flight, flyingSpeed);
+
+                    // Apply effects for flight or slow falling
+                    if (flight) {
+                        // Give panda levitation when flying - continuous application for sustained flight
+                        float pitch = pl.getPitch();
+                        if (pitch < -10) {
+                            // Looking up: strong levitation for ascending
+                            panda.addPotionEffect(new PotionEffect(PotionEffectType.LEVITATION, 20, 5, false, false, false));
+                        } else if (pitch > 30) {
+                            // Looking down: remove levitation, add slow falling for safe descent
+                            panda.removePotionEffect(PotionEffectType.LEVITATION);
+                            panda.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, 20, 1, false, false, false));
+                        } else {
+                            // Level flight: moderate levitation to maintain altitude
+                            panda.addPotionEffect(new PotionEffect(PotionEffectType.LEVITATION, 20, 2, false, false, false));
+                        }
+                    } else {
+                        // Not flying: remove levitation
+                        panda.removePotionEffect(PotionEffectType.LEVITATION);
+                    }
+                    
+                    // Apply slow falling to player while riding
+                    player.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, 10, 0, true, false, false));
                 }
             };
 

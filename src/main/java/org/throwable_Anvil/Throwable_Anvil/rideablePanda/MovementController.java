@@ -27,24 +27,14 @@ public class MovementController {
         Vector rightDirection = new Vector(-horizontalDirection.getZ(), 0, horizontalDirection.getX()).normalize();
 
         Vector movement = new Vector(0, 0, 0);
-        boolean isFlying = flyingMode.getOrDefault(playerId, false);
 
-        // Check if player wants to fly (look up sharply)
-        if (allowFlying && player.hasPermission("rideablepanda.fly")) {
-            float pitch = playerLoc.getPitch();
-            if (pitch < -50 && !panda.isOnGround()) {
-                isFlying = true;
-                flyingMode.put(playerId, true);
-            } else if (panda.isOnGround() && panda.getVelocity().getY() <= 0) {
-                isFlying = false;
-                flyingMode.put(playerId, false);
-            }
-        }
-
-        // Flying movement
-        if (isFlying) {
-            // In flying mode, move in the exact direction player is looking
-            movement = direction.clone().multiply(flyingSpeed);
+        // Handle movement based on flight mode
+        if (allowFlying) {
+            // When flying is enabled, only apply horizontal movement
+            // Vertical movement is handled by levitation effects in main plugin
+            movement = horizontalDirection.clone().multiply(flyingSpeed);
+            Vector currentVelocity = panda.getVelocity();
+            movement.setY(currentVelocity.getY()); // Preserve current Y velocity from levitation
         } else {
             // Ground movement - forward in horizontal direction
             movement = horizontalDirection.clone().multiply(speed);
