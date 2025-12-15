@@ -1,0 +1,51 @@
+# RideablePanda Configuration File
+# Configure taming chances, messages, and gameplay options
+
+# ===== Taming System =====
+taming:
+  # Enable taming requirement (players must feed pandas to gain their trust)
+  enabled: true
+  # Base success chance when feeding a panda (0-100)
+  base-chance: 30
+  # Food item used to tame pandas (BAMBOO is default)
+  food-item: BAMBOO
+  # Maximum attempts before guaranteed success (0 = no maximum)
+  max-attempts: 10
+
+# ===== Movement Controls =====
+controls:
+  # Movement speed multiplier
+  speed: 0.35
+  # Jump power when space is pressed
+  jump-power: 0.6
+  # Enable flying (requires rideablepanda.fly permission)
+  allow-flying: false
+  # Flying speed multiplier
+  flying-speed: 0.5
+
+# ===== Messages (Customizable for different languages) =====
+messages:
+  # Success messages
+  tamed-success: "&aYou've successfully tamed the panda!"
+  already-tamed: "&eThis panda is already tamed by you!"
+  mount-success: "&aYou mounted the panda! Use WASD to move."
+  
+  # Failure messages
+  taming-failed: "&cThe panda doesn't trust you yet. Try again!"
+  wrong-food: "&cPandas only like bamboo!"
+  not-adult: "&cYou can only ride adult pandas!"
+  no-permission: "&cYou don't have permission to ride pandas!"
+  no-fly-permission: "&cYou don't have permission to fly on pandas!"
+  
+  # Information messages
+  dismount: "&eYou dismounted the panda."
+  attempts-remaining: "&eAttempts: &6{attempts}&e/&6{max}"
+
+# ===== General Settings =====
+general:
+  # Require saddle to mount (after taming)
+  require-saddle: false
+  # Remove saddle from inventory when used
+  consume-saddle: false
+  # Show action bar messages during riding
+  show-action-bar: true

@@ -117,3 +117,45 @@ runs/
 
 # Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
 !gradle-wrapper.jar
+
+# Minecraft/Spigot BuildTools files
+BuildTools.log.txt
+work/
+apache-maven-*/
+PortableGit-*/
+BuildData/
+Bukkit/
+CraftBukkit/
+Spigot/
+
+# Test server files
+eula.txt
+server.properties
+bukkit.yml
+spigot.yml
+paper.yml
+permissions.yml
+ops.json
+whitelist.json
+banned-players.json
+banned-ips.json
+usercache.json
+world/
+world_nether/
+world_the_end/
+logs/
+plugins/
+libraries/
+versions/
+cache/
+
+# Compiled binary output
+bin/
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# VS Code
+.vscode/

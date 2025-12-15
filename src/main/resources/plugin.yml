@@ -1,8 +1,24 @@
 name: RideablePanda
-version: '1.0'
+version: 1.2
 main: org.throwable_Anvil.Throwable_Anvil.rideablePanda.RideablePanda
-api-version: '1.21'
-prefix: AnvilThrow
-authors: [ NOSgaming3125 ]
-description: Ever wanted to throw and anvil at someone? Now you can!
-website: www.nosgaming.fun
+api-version: 1.20
+author: Throwable_Anvil
+description: Tame and ride pandas with customizable controls and permissions!
+
+permissions:
+  rideablepanda.ride:
+    description: Allows player to ride pandas (requires taming)
+    default: true
+  rideablepanda.instant:
+    description: Allows instant mounting without taming (admin permission)
+    default: op
+  rideablepanda.fly:
+    description: Allows flying on pandas when enabled
+    default: op
+  rideablepanda.*:
+    description: Grants all RideablePanda permissions
+    default: op
+    children:
+      rideablepanda.ride: true
+      rideablepanda.instant: true
+      rideablepanda.fly: true
